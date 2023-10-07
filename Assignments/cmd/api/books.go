@@ -2,13 +2,39 @@ package main
 
 import (
 	"Assignments/internal/data"
+	"Assignments/internal/validator"
 	"fmt"
 	"net/http"
 	"time"
 )
 
 func (app *application) createBookHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintln(w, "create a new book")
+	var input struct {
+		Title  string   `json:"title"`
+		Year   int32    `json:"year"`
+		Genres []string `json:"genres"`
+	}
+
+	err := app.readJSON(w, r, &input)
+	if err != nil {
+		app.badRequestResponse(w, r, err)
+		return
+	}
+
+	book := &data.Book{
+		Title:  input.Title,
+		Year:   input.Year,
+		Genres: input.Genres,
+	}
+
+	v := validator.New()
+
+	if data.ValidateBook(v, book); !v.Valid() {
+		app.failedValidationResponse(w, r, v.Errors)
+		return
+	}
+
+	fmt.Fprintf(w, "%+v\n", input)
 }
 
 func (app *application) showBookHandler(w http.ResponseWriter, r *http.Request) {
