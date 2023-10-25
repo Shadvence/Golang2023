@@ -2,6 +2,8 @@ package data
 
 import (
 	"Assignments/internal/validator"
+	"database/sql"
+	"github.com/lib/pq"
 	"time"
 )
 
@@ -27,4 +29,31 @@ func ValidateBook(v *validator.Validator, book *Book) {
 	v.Check(len(book.Genres) >= 1, "genres", "must contain at least 1 genre")
 	v.Check(len(book.Genres) <= 5, "genres", "must not contain more than 5 genres")
 	v.Check(validator.Unique(book.Genres), "genres", "must not contain duplicate values")
+}
+
+type BookModel struct {
+	DB *sql.DB
+}
+
+func (m BookModel) Insert(book *Book) error {
+	query := `
+		INSERT INTO books (title, year, author, genres) 
+		VALUES ($1, $2, $3, $4)
+		RETURNING id, created_at, version`
+
+	args := []interface{}{book.Title, book.Year, book.Author, pq.Array(book.Genres)}
+
+	return m.DB.QueryRow(query, args...).Scan(&book.ID, &book.CreatedAt, &book.Version)
+}
+
+func (m BookModel) Get(id int64) (*Book, error) {
+	return nil, nil
+}
+
+func (m BookModel) Update(book *Book) error {
+	return nil
+}
+
+func (m BookModel) Delete(id int64) error {
+	return nil
 }

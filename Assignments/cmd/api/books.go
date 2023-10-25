@@ -12,6 +12,7 @@ func (app *application) createBookHandler(w http.ResponseWriter, r *http.Request
 	var input struct {
 		Title  string   `json:"title"`
 		Year   int32    `json:"year"`
+		Author string   `json:"author"`
 		Genres []string `json:"genres"`
 	}
 
@@ -24,6 +25,7 @@ func (app *application) createBookHandler(w http.ResponseWriter, r *http.Request
 	book := &data.Book{
 		Title:  input.Title,
 		Year:   input.Year,
+		Author: input.Author,
 		Genres: input.Genres,
 	}
 
@@ -34,7 +36,19 @@ func (app *application) createBookHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	fmt.Fprintf(w, "%+v\n", input)
+	err = app.models.Books.Insert(book)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+		return
+	}
+
+	headers := make(http.Header)
+	headers.Set("Location", fmt.Sprintf("/v1/books/%d", book.ID))
+
+	err = app.writeJSON(w, http.StatusCreated, envelope{"book": book}, headers)
+	if err != nil {
+		app.serverErrorResponse(w, r, err)
+	}
 }
 
 func (app *application) showBookHandler(w http.ResponseWriter, r *http.Request) {
