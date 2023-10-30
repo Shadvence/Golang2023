@@ -3,6 +3,7 @@ package data
 import (
 	"Assignments/internal/validator"
 	"database/sql"
+	"errors"
 	"github.com/lib/pq"
 	"time"
 )
@@ -47,13 +48,79 @@ func (m BookModel) Insert(book *Book) error {
 }
 
 func (m BookModel) Get(id int64) (*Book, error) {
-	return nil, nil
+	if id < 1 {
+		return nil, ErrRecordNotFound
+	}
+	query := `
+		SELECT id, created_at, title, year, author, genres, version 
+		FROM books
+		WHERE id = $1`
+
+	var book Book
+
+	err := m.DB.QueryRow(query, id).Scan(
+		&book.ID,
+		&book.CreatedAt,
+		&book.Title,
+		&book.Year,
+		&book.Author,
+		pq.Array(&book.Genres),
+		&book.Version,
+	)
+
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+
+	return &book, nil
 }
 
 func (m BookModel) Update(book *Book) error {
-	return nil
+	query := `
+		UPDATE books
+		SET title = $1, year = $2, author = $3, genres = $4, version = version + 1 
+		WHERE id = $5
+		RETURNING version`
+
+	args := []interface{}{
+		book.Title,
+		book.Year,
+		book.Author,
+		pq.Array(book.Genres),
+		book.ID,
+	}
+
+	return m.DB.QueryRow(query, args...).Scan(&book.Version)
 }
 
 func (m BookModel) Delete(id int64) error {
+	if id < 1 {
+		return ErrRecordNotFound
+	}
+
+	query := `
+		DELETE FROM books
+		WHERE id = $1`
+
+	result, err := m.DB.Exec(query, id)
+
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return ErrRecordNotFound
+	}
+
 	return nil
 }
