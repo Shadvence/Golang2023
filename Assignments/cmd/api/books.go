@@ -94,9 +94,9 @@ func (app *application) updateBookHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	var input struct {
-		Title  string   `json:"title"`
-		Year   int32    `json:"year"`
-		Author string   `json:"author"`
+		Title  *string  `json:"title"`
+		Year   *int32   `json:"year"`
+		Author *string  `json:"author"`
 		Genres []string `json:"genres"`
 	}
 
@@ -105,11 +105,18 @@ func (app *application) updateBookHandler(w http.ResponseWriter, r *http.Request
 		app.badRequestResponse(w, r, err)
 		return
 	}
-
-	book.Title = input.Title
-	book.Year = input.Year
-	book.Author = input.Author
-	book.Genres = input.Genres
+	if input.Title != nil {
+		book.Title = *input.Title
+	}
+	if input.Year != nil {
+		book.Year = *input.Year
+	}
+	if input.Author != nil {
+		book.Author = *input.Author
+	}
+	if input.Genres != nil {
+		book.Genres = input.Genres
+	}
 
 	v := validator.New()
 	if data.ValidateBook(v, book); !v.Valid() {
@@ -118,8 +125,14 @@ func (app *application) updateBookHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	err = app.models.Books.Update(book)
+
 	if err != nil {
-		app.serverErrorResponse(w, r, err)
+		switch {
+		case errors.Is(err, data.ErrEditConflict):
+			app.editConflictResponse(w, r)
+		default:
+			app.serverErrorResponse(w, r, err)
+		}
 		return
 	}
 

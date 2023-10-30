@@ -2,6 +2,7 @@ package data
 
 import (
 	"Assignments/internal/validator"
+	"context"
 	"database/sql"
 	"errors"
 	"github.com/lib/pq"
@@ -44,13 +45,17 @@ func (m BookModel) Insert(book *Book) error {
 
 	args := []interface{}{book.Title, book.Year, book.Author, pq.Array(book.Genres)}
 
-	return m.DB.QueryRow(query, args...).Scan(&book.ID, &book.CreatedAt, &book.Version)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	return m.DB.QueryRowContext(ctx, query, args...).Scan(&book.ID, &book.CreatedAt, &book.Version)
 }
 
 func (m BookModel) Get(id int64) (*Book, error) {
 	if id < 1 {
 		return nil, ErrRecordNotFound
 	}
+
 	query := `
 		SELECT id, created_at, title, year, author, genres, version 
 		FROM books
@@ -58,7 +63,11 @@ func (m BookModel) Get(id int64) (*Book, error) {
 
 	var book Book
 
-	err := m.DB.QueryRow(query, id).Scan(
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+
+	defer cancel()
+
+	err := m.DB.QueryRowContext(ctx, query, id).Scan(
 		&book.ID,
 		&book.CreatedAt,
 		&book.Title,
@@ -84,7 +93,7 @@ func (m BookModel) Update(book *Book) error {
 	query := `
 		UPDATE books
 		SET title = $1, year = $2, author = $3, genres = $4, version = version + 1 
-		WHERE id = $5
+		WHERE id = $5 AND version = $6
 		RETURNING version`
 
 	args := []interface{}{
@@ -93,9 +102,22 @@ func (m BookModel) Update(book *Book) error {
 		book.Author,
 		pq.Array(book.Genres),
 		book.ID,
+		book.Version,
 	}
 
-	return m.DB.QueryRow(query, args...).Scan(&book.Version)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err := m.DB.QueryRowContext(ctx, query, args...).Scan(&book.Version)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return ErrEditConflict
+		default:
+			return err
+		}
+	}
+	return nil
 }
 
 func (m BookModel) Delete(id int64) error {
@@ -107,7 +129,10 @@ func (m BookModel) Delete(id int64) error {
 		DELETE FROM books
 		WHERE id = $1`
 
-	result, err := m.DB.Exec(query, id)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	result, err := m.DB.ExecContext(ctx, query, id)
 
 	if err != nil {
 		return err
