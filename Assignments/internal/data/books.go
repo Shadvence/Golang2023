@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/lib/pq"
 	"time"
 )
@@ -148,4 +149,58 @@ func (m BookModel) Delete(id int64) error {
 	}
 
 	return nil
+}
+
+func (m BookModel) GetAll(title string, genres []string, filters Filters) ([]*Book, Metadata, error) {
+	query := fmt.Sprintf(`
+		SELECT count(*) OVER(), id, created_at, title, year, author, genres, version
+		FROM books
+		WHERE (to_tsvector('simple', title) @@ plainto_tsquery('simple', $1) OR $1 = '') 
+		AND (genres @> $2 OR $2 = '{}')
+		ORDER BY %s %s, id ASC
+		LIMIT $3 OFFSET $4`, filters.sortColumn(), filters.sortDirection())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	args := []interface{}{title, pq.Array(genres), filters.limit(), filters.offset()}
+
+	rows, err := m.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, Metadata{}, err
+	}
+
+	defer rows.Close()
+
+	totalRecords := 0
+	books := []*Book{}
+
+	for rows.Next() {
+		var book Book
+
+		err := rows.Scan(
+			&totalRecords,
+			&book.ID,
+			&book.CreatedAt,
+			&book.Title,
+			&book.Year,
+			&book.Author,
+			pq.Array(&book.Genres),
+			&book.Version,
+		)
+
+		if err != nil {
+			return nil, Metadata{}, err
+		}
+
+		books = append(books, &book)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, Metadata{}, err
+	}
+
+	metadata := calculateMetadata(totalRecords, filters.Page, filters.PageSize)
+
+	return books, metadata, nil
 }
